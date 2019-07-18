@@ -116,3 +116,50 @@ grep -r "task_struct" /usr/include/
 ps：如果是date命令，并不是直接执行date命令；而是shell解析器去bin目录下执行了date命令. 
 
 练习：打印当前进程的所有环境变量。 
+
+> 处理环境变量的函数
+
+1. getenv函数
+
+   获取环境变量的值
+
+2. setenv函数 设置环境变量的值 （如果要删除的环境变量在命名合法时，即使不存在也会返回0，也就是返回删除成功；如果是命名非法，返回 -1）
+
+3. unsetenv函数  删除环境变量的值
+
+/*************************************************************************
+    > File Name: setenv.c
+    > Author: ma6174
+    > Mail: ma6174@163.com 
+    > Created Time: 2019年07月18日 星期四 11时23分22秒
+ ************************************************************************/
+
+#include<stdlib.h>
+#include<stdio.h>
+#include<string.h>
+int main(  )  {
+	char *val;
+	const char *name = "ABD";
+	val = getenv(name);
+	printf("1,%s = %s\n" ,name ,val) ;
+    setenv(name , "haha", 1);
+	val = getenv(name);
+	printf("2,%s = %s\n",name,val);
+#if 0
+	int ret = unsetenv("ABDFGH");
+	printf("ret = %d\n", ret) ;
+
+	val = getenv(name);
+	printf("3 %s = %s\n",name,val) ;
+
+#else
+	int ret = unsetenv("ABD");
+	printf("ret = %d\n",ret);
+	val = getenv(name);
+    printf("3, %s = %s\n", name, val);
+#endif
+
+	return 0;
+}   
+
+ps：第一次，本来程序中是没有ABD这个进程的，所以环境变量肯定为null，然后通过setenv函数，把haha这个进程赋值给了ABD，这样，ABD的环境变量就不是null了。再通过unsetenv函数，把ABD的环境变量给删除掉，然后这个时候再去获得name的环境变量，就又1变成了null。
