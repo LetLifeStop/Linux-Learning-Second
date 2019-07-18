@@ -127,13 +127,7 @@ ps：如果是date命令，并不是直接执行date命令；而是shell解析�
 
 3. unsetenv函数  删除环境变量的值
 
-/*************************************************************************
-    > File Name: setenv.c
-    > Author: ma6174
-    > Mail: ma6174@163.com 
-    > Created Time: 2019年07月18日 星期四 11时23分22秒
- ************************************************************************/
-
+```
 #include<stdlib.h>
 #include<stdio.h>
 #include<string.h>
@@ -149,8 +143,10 @@ int main(  )  {
 	int ret = unsetenv("ABDFGH");
 	printf("ret = %d\n", ret) ;
 
-	val = getenv(name);
-	printf("3 %s = %s\n",name,val) ;
+​```
+val = getenv(name);
+printf("3 %s = %s\n",name,val) ;
+​```
 
 #else
 	int ret = unsetenv("ABD");
@@ -159,7 +155,87 @@ int main(  )  {
     printf("3, %s = %s\n", name, val);
 #endif
 
-	return 0;
+​```
+return 0;
+​```
+
 }   
+```
 
 ps：第一次，本来程序中是没有ABD这个进程的，所以环境变量肯定为null，然后通过setenv函数，把haha这个进程赋值给了ABD，这样，ABD的环境变量就不是null了。再通过unsetenv函数，把ABD的环境变量给删除掉，然后这个时候再去获得name的环境变量，就又1变成了null。
+
+
+
+#### 进程控制原语
+
+> fork函数
+
+​    **返回值有两个：**
+
+      1. 返回子进程的pid
+         2. 返回0
+
+   具体运行原理：当到达fork函数的时候，首先创建出一个子进程，然后这个父进程和子进程继续往下走；父进程的fork函数返回的是子进程的pid(>0)，子进程的fork函数返回的为是否创建成功（0 / -1 ）  .
+
+  getpid（）获得当前进程的pid ，getppid（）获得当前进程的父进程的pid
+
+```
+#include<stdio.h>
+#include<unistd.h>
+#include<stdlib.h>
+int main(void){
+	pid_t pid;
+	printf( "xxxxxxxxxx\n");
+ 	pid =  fork(  );
+    if( pid == -1) {
+		perror("  fork error");
+		exit(1);  
+	}
+	else if(pid == 0){
+		printf("I'am child, pid = %d, ppid = %u\n" , getpid( ) , getppid(  ));
+	}
+	else {
+		printf( "pid = %u , ppid = %u\n",getpid(  ) ,getppid(  ));  
+	}
+    printf("12334343\n");  
+	return 0;
+}
+```
+
+ 
+
+**ps：12334343 会出现两个，但是xxxxxxxx只会出现一次**
+
+作业：写一个有五个进程的c程序
+
+**注意：**不能通过简单的for循环来进行创造，因为fork是按照当前的继续往下走，也就是会创造多于5个进程。 
+
+
+
+```
+#include<stdio.h>
+#include<unistd.h>
+#include<stdlib.h>
+int main(void){
+	pid_t pid;
+	printf( "xxxxxxxxxx\n");
+	for ( int i=0 ; i < 5;i++){
+ 	pid =  fork(  );
+    if( pid == -1) {
+		perror("  fork error");
+		exit(1);  
+	}
+	else if(pid == 0){
+		printf("I'am child, pid = %d, ppid = %u\n" , getpid( ) , getppid(  ));
+	 break; // 当到达子进程时，break卡停
+	}
+	}
+    printf("12334343\n");  
+	return 0;
+}
+```
+
+ 
+
+ps：顺序是不一定的，因为需要抢占CPU资源，可以通过sleep函数来实现按照顺序输出。 
+
