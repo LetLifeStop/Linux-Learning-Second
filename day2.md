@@ -296,7 +296,7 @@ else if(i==2)
 {
 	sleep(5);  
 	printf("%d th\n",i);  
-	 execlp("ps","ps","-ef",NULL);
+	 execl("/bin/ls","ps","-l",NULL);
 }  
 int num = 0 ;
 if( i== 3){
