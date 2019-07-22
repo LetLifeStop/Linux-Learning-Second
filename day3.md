@@ -315,7 +315,179 @@ strace 程序    可以追踪程序运行的过程中使用了系统调用有哪
 
 > 练习
 
-实现文件多进程的拷贝
+1. 实现文件多进程的拷贝，对于当前的文件，分成五个子进程来进行拷贝
 
-对于当前的文件，分成五个部分来进行拷贝
+   具体思路：写了一下午，具体是open函数的问题。
 
+   1. 读取要拷贝的文件，读取长度
+   2. 创建映射
+   3. 建立要写入的文件
+   4. 扩展空间
+   5. 建立映射
+   6. 分配好每个进程都准备哪些内容
+   7. 通过映射写入文件
+   8. 回收操作
+
+   坑点：
+
+   在open的时候，一定要注意O_TRUNC 的使用
+
+   ![1563802761191](C:\Users\acm506\Desktop\Linux\Linux-Learning-Second\1563802761191.png)
+
+   **这里，当使用O_TRUNC的时候，原来的文件会归零；当归零的时候，mmap的第二个参数就会报错**
+
+   
+
+   ```C
+   #include<stdio.h>
+   #include<sys/stat.h>
+   #include<fcntl.h>
+   #include<unistd.h>
+   #include<sys/types.h>
+   #include<sys/wait.h>
+   #include<stdlib.h>
+   #include<sys/mman.h>
+   #include<string.h>
+   
+   void sys_err(char *str){
+       perror(str);
+       exit(-1);
+   }
+   int min(int t1 ,int t2  )  {
+       if(t1 > t2)return t2;
+       return t1;
+   }
+   //int getlen(const char* path){
+    //   int filesize = -1;
+    //   FILE *fp;
+   //   fp = fopen( path , "r");
+    //   if(fp == NULL)return filesize;
+    //   fseek(fp , 0L ,SEEK_END);
+    //   filesize = ftell( fp );
+    //   fclose(fp);
+    //   return filesize;
+   //}
+   int sto[10];
+   void  cal(int num , int len){ // 分配任务
+       int tmp  = len / 5 ;
+       while(len > 0 ){
+           int t = min(tmp , len);
+           sto[ num++ ] = t;
+           len -= t;
+           if(len<tmp && len != 0 ){
+               sto[ num - 1] += len;
+               return ;
+           }
+       }
+   }
+   int main(int argc ,char *argv[]){
+       int fd ;
+       if(argc < 3) {
+          perror("error");
+            exit(1);
+         }
+       int len;
+       struct stat info;
+   
+       // 建立读取文件的映射区
+       fd = open (argv[1],O_CREAT|O_RDWR,0777) ; 
+       if( fd < 0){
+           perror("open file");
+           exit(1);
+       }
+       int tmp ;
+       fstat(fd , &info);
+       len = info.st_size;
+        printf("%d\n" , len);  
+       char *p_r = NULL;
+       p_r =(char *)mmap(NULL , len , PROT_READ|PROT_WRITE, MAP_SHARED ,fd ,0);  // 建立映射
+       if( p_r == MAP_FAILED){
+           perror("mmap1 error");
+           exit(1);
+       }
+       char *r = p_r;
+       close(fd);
+   
+       int fd1;
+       // 建立编写文件的映射区
+       char *p_w = NULL ;
+       fd1 = open (argv[2] , O_RDWR|O_CREAT|O_TRUNC, 0644);
+   
+       if(fd1 < 0 ){
+           perror("open 2 error");
+           exit(1);
+       }
+       
+        tmp  = ftruncate(fd1 ,len );
+       if(tmp == -1){
+           perror("  ftruncate error");
+           exit(1);
+       }
+       p_w =(char *)mmap(NULL , len , PROT_WRITE|PROT_READ, MAP_SHARED , fd1 ,0);
+       if(p_w == MAP_FAILED){
+           perror("mmap 2 error");
+           exit(1);
+       }
+       char* w =p_w;
+       close(fd1);
+       cal(0 , len);
+       //for(int i = 0 ; i< 5;i++){
+        //   printf("  %d %d\n",i,sto[i]);
+      // }
+       int i;
+       pid_t pid;
+       int cnt = 0;
+       for (i = 0 ; i< 5; i++) {
+           pid = fork();
+           if( pid == -1){
+               printf("  fork error");
+               exit(1);
+           }
+           if (pid == 0)break;
+       }
+       if(i != 5){
+           sleep(i);
+           r += i*(len/5);
+           w += i*(len/5);
+           memcpy( w, r,sto[i]);
+           //	 printf("%d %d \n",i * 12 , sto[i]);
+           printf("%d th sto , from %d to %d byte, %d stored\n", i, i * (len/5) ,i * (len/5) + sto[ i ] , sto[ i ] );
+       }
+       else {
+           sleep(8);
+           do{
+               pid_t pid ;
+               pid = waitpid(-1 , NULL , WNOHANG);
+               if(pid > 0)cnt++;
+           }while(cnt<5);
+           printf("back %d process\n",cnt);
+       }
+       // 按照五个子进程来对文件进行多线程拷贝的操作
+   
+       int ret = munmap(p_r, len);
+       if(ret == -1){
+           perror("munmap failed");
+           exit(1);
+       }
+       ret = munmap(p_w , len);
+       if(ret == -1){
+           perror("munmap failed");
+           exit(1);
+       }
+       return 0;
+   }
+   ```
+
+2. 实现简单的交互式shell.
+
+   使用已学习的各种C函数实现一个简单的交互式shell，要求：
+
+   1. 给出提示符，让用户驶入一行命令，识别程序名和参数并调用适当的exec函数执行程序，待执行完成之后再次给出提示符。
+
+   2. 该 程序可识别和处理以下符号：
+
+      1. 简单的标准输入输出重定向：仿照例 "父子进程 ls | wc -l"，先dup2然后exec。
+
+      2. 管道（|）：shell进程先调用pipe创建管道，然后fork出两个子进程。一个子进程关闭读端，调用dup2将写端赋给标准输出，另一个子进程关闭写端，调用dup2把读端赋给标准输入，两个子进程分别调用exec执行程序，而shell进程把管道的两端都关闭，调用wait等待两个子进程终止。类似于“兄弟进程间 ls | wc -l 练习的实现。
+
+         
