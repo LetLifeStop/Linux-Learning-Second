@@ -480,4 +480,153 @@ strace 程序    可以追踪程序运行的过程中使用了系统调用有哪
 
 2. 实现简易聊天室
 
+   具体实现思路：
    
+   1. 首先具有客户端和服务器端，客户端到服务器有一个公共管道，这是为了客户端向服务器端传数据。
+   
+   2. 服务器端到客户端有一个私有管道，这是为了服务器端向客户端传输数据。
+   
+   3. 每一次信息传递，客户端通过FIFO公共管道传输到服务器端，然后服务器端处理信息，然后再通过客户端私有的管道传输到客户端
+   
+      client.h 用来储存客户信息以及头文件
+   
+      ```c
+      #include<stdlib.h>
+      #include<stdio.h>
+      #include<string.h>
+      #include<fcntl.h>
+      #include<limits.h>
+      #include<sys/types.h>
+      #include<sys/stat.h>
+      #include<unistd.h>
+      #include<ctype.h>
+      
+      #define SERVER_FIFO_NAME "serve_fifo"  // client -> server
+      #define CLIENT_FIFO_NAME "client_%d_fifo" // server ->client
+      
+      # define BUFFER_SIZE PIPE_BUF
+      # define MESSAGE_SIZE 20
+      # define NAME_SIZE 256
+      
+       typedef  struct message{
+          pid_t client_pid;   // 客户的文件pid
+          char data[MESSAGE_SIZE+10]; 
+      }message;
+      
+      ```
+   
+      client.c  客户端
+   
+      ```c
+      #include"client.h"
+      
+      int main(){
+          int server_fifo_fd;
+          int client_fifo_fd;
+          int res;
+          message msg;
+          char client_fifo_name[1024];
+          
+          msg.client_pid = getpid();
+           // 给client_fifo_name 赋值
+          sprintf(client_fifo_name , CLIENT_FIFO_NAME , msg.client_pid);
+         
+          // 创建管道
+        if(mkfifo(client_fifo_name , 0777) == -1){
+            perror("creat client_fifo_name error");
+            exit(1);
+        }
+         // 服务器向私有管道中写数据
+         server_fifo_fd = open(SERVER_FIFO_NAME ,O_WRONLY);
+        if(server_fifo_fd == -1){
+            perror("creat server_fifo error");
+            exit(1);
+        }
+      
+        sprintf(msg.data , "hello from %d",msg.client_pid);
+        printf("%d sent %s",msg.client_pid , msg.data);
+         // 客户端向公共管道中写数据
+        write(server_fifo_fd , &msg , sizeof(msg));
+          
+         // 客户端从私有管道中读取数据
+         client_fifo_fd = open(client_fifo_name ,O_RDONLY);  
+         if(client_fifo_fd == -1){
+            perror("creat client fifo fd error");
+            exit(1);
+        }
+        
+        res = read(client_fifo_fd , &msg , sizeof(msg));
+        if(res > 0){
+            printf("received %s\n" , msg.data);
+        }
+      
+        close(client_fifo_fd);
+        close(server_fifo_fd);
+        unlink(client_fifo_name);
+        return 0;
+      }
+      ```
+   
+      server.c 服务器端
+   
+      ```c
+      #include"client.h"
+      
+      int main(){
+          int client_fifo_fd;
+          int server_fifo_fd;
+          char client_fifo_name[1024];
+          // 创建公共管道
+      	if(mkfifo(SERVER_FIFO_NAME,0777) == -1 ){
+              perror("creat SERVER_FIFO error");
+              exit(1);
+          } 
+          //服务器从管道中读取数据 
+          server_fifo_fd = open(SERVER_FIFO_NAME , O_RDONLY);
+          if( client_fifo_fd < 0 ){
+              perror("creat client fifo fd error");
+              exit(1);
+          }
+          sleep(5);
+         
+      	message msg;
+          char *p;
+          int res ;
+          
+      	while(res = read(server_fifo_fd , &msg , sizeof(msg)) > 0 ) {
+              p = msg.data;
+      	
+      		while(*p){
+      			*p = toupper(*p);
+      			++p;
+      		}
+      		sprintf(client_fifo_name, CLIENT_FIFO_NAME, msg.client_pid);
+              client_fifo_fd = open(client_fifo_name, O_WRONLY);
+              if (client_fifo_fd == -1) {
+                  perror("creat client_fifo_fd error");
+                  exit(1);
+              }
+              write(client_fifo_fd, &msg, sizeof(msg));
+              close(client_fifo_fd);
+          }
+           close(server_fifo_fd);
+           unlink(SERVER_FIFO_NAME);
+        return 0;
+      }
+      
+      
+      
+      ```
+   
+      
+   
+      调用方法：(& 代表后台运行)
+   
+      1. gcc -o server.c server
+   
+      2. gcc -o client.c client
+   
+      3.  ./server &
+      4. ./client & 
+
+​              **注意**:如果管道本来存在的话，需要先把原来的管道删除
