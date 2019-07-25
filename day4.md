@@ -77,6 +77,8 @@ ctrl + \  SIGOUT  (退出)
 
 总线错误  7号进程 SIGBUS
 
+> 信号集操作函数
+
 kill函数/ kill 命令产生信号
 
 int kill(pid_t pid ,int sig);
@@ -85,7 +87,7 @@ sig 最好使用宏名
 
 pid 和waitpid中的pid参数类似
 
-**kill函数和waitpid函数的区别，kill函数当参数为全组的时候，会杀死该组内所有的进程，但是waitpid只会回收该组内随机的一个进程！！！**
+**kill函数和waitpid函数的区别，kill函数当参数为负的组号的时候，会杀死该组内所有的进程，但是waitpid只会回收该组内随机的一个进程！！！**
 
 练习：
 
@@ -178,18 +180,351 @@ return 0;
 }
 ```
 
-信号集操作函数
+raise函数：给当前进程发送指定信号（自己给自己发）
+
+abort函数：给自己发异常终止的信号 6号信号SIGABRT ，终止并产生Core文件
+
+#### 软件条件产生信号
+
+**alarm函数**  
+
+14号信号SIGALRM
+
+alarm（5）-> 3sec -> alarm(4) -> 5sec ->alarm(5) ->alarm(0)
+
+alarm(0)取消闹钟
+
+解释：通过查看man文档，当之前没有调用alarm函数时，返回 0 ；当之前有alarm时，返回上一个alarm函数剩余的时间。 
+
+  每个进程都有且只有唯一定时器
+
+time 命令 统计时间
+
+real  实际
+
+user 用户
+
+sys   内核
+
+实际时间 == 系统时间 + 用户时间 + 等待时间
+
+**setitimer 函数**
+
+设置定时器（闹钟），可代替alarm函数，精度微秒 us
+
+可以设置当前计时和上一次计时相差多长时间
+
+int setitimer(int which ,const struct itimerval *new valude ,struct itimerval *oldvalue);
+
+which : 表示在哪计时
+
+ITIMER_REAL  实际
+
+ITIMER_VIRTUAL  虚拟空间计时 用户空间  
+
+ITIMER_PROF  运行时计时（用户 + 内核）
+
+new valude：当前这次计时的信息
+
+old valude：上一次计时的信息 ，传出参数
+
+   练习：setitimer函数计算一秒内可以数多少个数
+
+```c
+*************************************************************************
+    > File Name: setitimer.c
+    > Author: ma6174
+    > Mail: ma6174@163.com 
+    > Created Time: 2019年07月25日 星期四 11时36分05秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<sys/time.h>
+//typedef struct itimerval{
+// typedef  struct timeval{
+//    time_t tv_sec;
+//	suseconds_t tv_usec;
+ // }it_interval ,  itvalue;
+//};
+unsigned int  my_alarm(unsigned int sec){
+   struct itimerval it , oldit;
+   int ret;
+   
+   it.it_interval.tv_sec = 0;
+   it.it_interval.tv_usec = 0 ;
+
+   it.it_value.tv_sec = sec;
+   it.it_value.tv_usec = 0;
+   ret = setitimer(ITIMER_REAL , &it , &oldit);
+   if(ret == -1){
+	    perror("setitimer error");
+		exit(1);  
+   }
+   return ret ;
+}
+int main(  )  {
+int i = 0 ;
+my_alarm(1);
+while(1){
+printf("%d\n" , i++ );
+}
+return 0;
+}
+```
+
+**signal函数** 
+
+ void (*sighandler_t)(int);
+
+sighandler_t signal( int signum  , sighandler_t handler);
+
+```c
+/*************************************************************************
+    > File Name: setitimer.c
+    > Author: ma6174
+    > Mail: ma6174@163.com 
+    > Created Time: 2019年07月25日 星期四 11时36分05秒
+ ************************************************************************/
+#include<unistd.h>
+#include<stdio.h>
+#include<stdlib.h>
+#include<sys/time.h>
+#include<signal.h>
+//typedef struct itimerval{
+  
+// typedef  struct timeval{
+//    time_t tv_sec;
+//	suseconds_t tv_usec;
+ // }it_interval ,  itvalue;
+//};
+void mufync(  )  {
+	  printf("haahahahahha\n");  
+}
+int main(  )  {
+int i = 0 ;
+   struct itimerval it , oldit;
+   int ret;
+   signal(SIGALRM , mufync);  
+   it.it_interval.tv_sec = 5;
+   it.it_interval.tv_usec = 0 ;
+
+   it.it_value.tv_sec = 3;
+   it.it_value.tv_usec = 0;
+    // 这里第一个hahahah是3秒后出现，剩下的就都是5秒了，注意定义方法
+   ret = setitimer(ITIMER_REAL , &it , &oldit);
+   if(ret == -1){
+	    perror("setitimer error");
+		exit(1);  
+   }
+  // my_alarm(1);
+    while(1);    
+   return 0;
+}
+```
+
+#### 信号集操作函数   // 只是注册函数，真正捕捉信号的是内核！！！
+
+####  信号集设定
+
+sigset_t set;  // typedef unsigned long sigset_t;
+
+1. int sigemptyset(sigset_t *set); // 将某个信号集清零，注意是指针类型
+
+2. int sigfillset(sigset_t &set); // 将某个信号集全部填充为1
+
+3. int  sigaddset(sigset_t *set ,int signum); 
+
+4. int sigdelset(sigset_t *set ,int signum); 从set中增加或者删除信号signum（ 0->1 ，或者 
+
+   1 -> 0 ）
+
+5. int sigismember(const sigset_t *set,int signum); // 检测是否存在
 
 
 
-> 信号屏蔽字
+**sigprocmask函数**
 
+ 读取或修改进程的信号屏蔽集（PCB块中）。可用来屏蔽信号，解除屏蔽。
 
+ int sigprocmask( int how ,const sigset_t *set ,sigset_t *oldset);
+
+参数：
+
+ set : 传入参数，保存旧的信号屏蔽集
+
+oldset：传出参数，保存旧的信号屏蔽集
+
+how参数取值：假设当前的信号屏蔽字为mask
+
+1. SIG_BLOCK : 当how设置为此值，set表示要屏蔽的信号。相当于mask = mask | set 
+
+2. SIG_UNBLOCK : set表示要解除屏蔽的信号，相当于 mask = mask &~mask 
+
+3. SIG_SETMASK: set表示用于替代原始屏蔽及新的屏蔽集。相当于mask = set . 当接触了若干个信号的阻塞，就在sigpromask返回之前，至少将其中一个信号传递
+
+   
+
+**sigpending函数**
+
+读取当前进程的未决信号集
+
+int sigpending( sigset_t *set); set传出参数 
+
+练习：编写程序，把所有常规信号的未决状态打印至屏幕
+
+具体思路：首先创建一个空的，然后初始化，然后对特定的信号进行增删，然后对屏蔽集进行操作，通过屏蔽集就能影响到未决信号集再就是输出检验即可。
+
+```c
+/*************************************************************************
+    > File Name: printpending.c
+    > Author: ma6174
+    > Mail: ma6174@163.com 
+    > Created Time: 2019年07月25日 星期四 16时35分19秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<signal.h>
+#include<unistd.h>
+void printped(sigset_t *ped )  {
+int i;
+for ( i = 1 ; i< 32; i++ ){
+	if( sigismember(ped , i) == 1 ){ //判断当前信息的状态
+		  putchar('1');  
+	}
+	else putchar('0');  
+}
+printf("\n");
+}
+int main(void )  {
+	  
+sigset_t myset,oldset,ped;
+
+sigemptyset(&myset);  // 初始化
+
+sigaddset(&myset , SIGQUIT);  // 增加信号
+
+sigprocmask(SIG_BLOCK ,&myset ,&oldset); // 屏蔽3号信号
+
+while(1){
+sleep(1);  	
+sigpending( &ped );
+printped( &ped ) ;
+}  
+return 0;
+}
+```
 
 > 信号的捕捉
 
+   
+
+```c
+/*************************************************************************
+    > File Name: signal2.c
+    > Author: ma6174
+    > Mail: ma6174@163.com 
+    > Created Time: 2019年07月25日 星期四 17时40分57秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<signal.h>
+#include<stdlib.h>
+#include<unistd.h>
+
+typedef void (*sighandler_t) (int); 
+void catchsight(int  tmp )  {   // 这里的tmp是信号的编号
+	 printf("````````````````%d`\n",tmp);   
+}
+int main(  )  {
+    sighandler_t handler;
+	handler = signal(SIGINT , catchsight);  
+   if(handler == SIG_ERR){
+	    perror("signal error");
+		exit(1);  
+   }
+   while(1);   //不让程序停止
+   return 0;
+}
+```
+
+**sigaction函数**
+
+int sigaction( int signum , const struct sigaction *act , struct sigaction *oldact);
+
+参数：
+
+signum 信号编号
+
+struct sigaction{
+
+void      (*sa_handler)(int) ;  // 函数名 
+
+void      (*sa_sigaction)(int , siginfo_t *, void *);
+
+sigset_t  sa_mask;  //  **用于指定在信号捕捉函数执行期间所屏蔽的信号集（在信号过来的时候，函数处理这个信号的期间，要屏蔽哪些信号）**
+
+int        sa_flags;  
+
+ //一大坨参数，具体查看man文档
+
+void     (*sa_restorer)(void);
+
  
 
-注册信号捕捉函数
+```c
+/*************************************************************************
+    > File Name: sigaction.c
+    > Author: ma6174
+    > Mail: ma6174@163.com 
+    > Created Time: 2019年07月25日 星期四 18时36分17秒
+ ************************************************************************/
 
- **sigaction函数**
+#include<stdio.h>
+#include<stdlib.h>
+#include<signal.h>
+#include<unistd.h>
+
+typedef void (*sighandler_t) ( int );
+
+void docatch(int num )  {
+	printf( "-----------------%d\n",num);
+	return ;
+}
+int main(  )  {
+	int ret ;
+	
+	struct sigaction act;
+	act.sa_handler = docatch;
+    sigemptyset( &act.sa_mask);
+	sigaddset( &act.sa_mask , SIGQUIT);
+	
+	act.sa_flags = 0;  // 默认为0 功能就是该信号捕捉函数正在运行时，不再接受相同的信号进入函数
+
+    ret = sigaction(SIGINT , &act ,NULL);
+	if( ret < 0 ){
+		perror("sigaction error");
+		exit(1);  
+	}
+	while(1);
+	return 0;
+}
+```
+
+#### 信号捕捉特性
+
+1. 对于sigaction函数，在信号执行期间，这个时候阻塞信号集是函数中的sa_mask。当执行完之后会再换回来。
+
+2. xxx信号捕捉函数执行期间，xxx信号自动屏蔽
+3. 阻塞的长队信号不支持排队，产生多次的话，只记录一次
+
+#### 内核实现信号捕捉过程
+
+1. 在执行主流程的某条指令的时候因为 出现异常，中断或者系统调用进入内核
+2. 在内核中，对于该条指令如果信号的处理动作是默认的话，调用完之后就直接从内核回到主流程了。
+
+如果该条指令的信号处理动作不是默认的话，那么就从内核进入主流程执行自定义的信号处理动作
+
+3. 当信号的处理动作不是默认的前提下，调用完自定义的动作时，通过特殊的系统调用sigreturn 再次进入内核
+4. 返回内核之后从上次中断的地方继续往下执行
