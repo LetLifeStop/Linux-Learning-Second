@@ -302,3 +302,302 @@ int main(){
 return 0;
 }
 ```
+
+
+
+
+
+### 信号传参
+
+> 发送信号参数
+
+sigqeue 函数对应kill函数，但是可以向指定进程发送信号的携带参数
+
+int sigqueue( pid_t pid , int sig ,const union sigval value);
+
+参数：
+
+pid         指定进程的ID
+
+sig         信号编号 
+
+sigval    要传出的信息
+
+> 捕捉函数参数
+
+int sigaction( int signum , const struct sigaction *act , struct sigaction *oldac);
+
+struct sigaction{
+
+void (*sa_handler)(int);
+
+void (* sa_sigaction )(int ,siginfo_t  *, void * );
+
+sigset_t sa_mask;
+
+int sa_flags;
+
+void (*sa_restorer)(void);
+
+};
+
+当注册信号捕捉函数，希望获取更多信号相关信息，应该使用sigaction  ,但是这个时候sa_flags 必须指定为SA_SIGINFO。 
+
+
+
+##### 终端系统调用
+
+系统调用分为两类：慢速系统调用和其他系统调用
+
+1. 慢速系统调用：可能会是进程永远阻塞的一类 。pause , wait , waitpid , read(从网络读取，从设备读取，从管道等等，可能会出现阻塞)
+2. 其他系统调用： 一调用就结束
+
+慢速系统调用被中断的相关行为，实际上就是pause的行为：如read 
+
+1. 想中断pause ，信号不能被屏蔽
+2. 信号的处理方式必须是捕捉（默认 ， 忽略都不可以）
+3. 中断后返回 -1 ，设置errno为EINTR（表示信号被中断）
+
+可以通过修改sa_flags 参数来设置被信号中断之后系统调用是否重新启动。在执行捕捉函数的时候，不希望自动忽略该信号，同样可以通过修改sa_flags来实现。
+
+
+
+### 终端
+
+所有输入，输出设备的总称
+
+终端设备模块
+
+终端设备 - 》 终端设备驱动 -》 **线路规程过滤（内核）**-》系统调用的实现
+
+**ttyname 函数**
+
+当前文件描述符对应的文件名
+
+网络终端的构造
+
+**每一个按键都要在网络上走一遭！！**
+
+
+
+#### 进程组
+
+进程组，也称之为作业。 
+
+进程组操作函数
+
+getpgrp函数：
+
+  获取当前进程组ID
+
+getpid函数：
+
+获取指定进程的进程组ID
+
+**setpgid函数：**
+
+  int setpid( pid_t pid ,pit_t pgid); 将参数1对应的进程，加入到参数2对应的进程组中
+
+1. 如果改变子进程为新的进程，应该在fork之后，exec之前
+2. 权级问题。非root进程只能改变自己创建的子进程，或有权限操作的进程
+
+PID:   进程ID
+
+PGID：进程组ID
+
+
+
+改变进程默认所属的进程
+
+```c
+/*************************************************************************
+
+> File Name: setpgif.c
+> Author: 
+> Mail: 
+> Created Time: 2019年07月28日 星期日 17时10分55秒
+>  ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<sys/types.h>
+
+int main(){
+    pid_t pid;
+    pid = fork();
+    if(pid < 0){
+        perror("fork error");
+        exit(1);
+    }
+    else if(pid == 0 ){
+        printf("child PID == %d\n",getpid());
+        printf("child group ID == %d\n",getpgid(0)); // 子进程的pid，子进程的组id
+        sleep(7);
+        printf("child group ID change to ==%d\n",getpid());
+        exit(0);
+    }
+    else if(pid > 0){
+        sleep(1); // 先让子进程创建好
+        setpgid(pid , pid); 
+            sleep(13);
+   printf("-------------------\n");
+   printf("parent PID == %d\n",getpid());
+   printf("parent's parent PID == %d\n",getppid());
+   printf("parent Group ID == %d\n",getpgid(0));
+  
+   sleep(5);
+   setpgid(getpid() , getppid());
+    printf("\n---group ID of parent is changed to %d\n",getpgid(0));
+  while(1); 
+}
+return 0;
+}
+```
+
+
+
+### 会话
+
+把一堆进程组进行凑组。
+
+创建一个会话注意的条件：
+
+1. 调用进程不能是进程组组长，否则这个进程会变成一个新的会话首领
+2. 创建会话的进程，创建之后，变成组长和会长
+3. 需要有root权限
+4. 新会话丢弃原有的控制终端，该会话没有控制终端（只在后台执行）
+5. 该调用是组长进程，则出错返回
+6. 建立新会话时，先调用fork，父进程终止，子进程调用setsid
+
+> getsid函数
+
+获取进程所属的会话进程
+
+> setsid函数
+
+ 设置会话
+
+练习：
+
+```c
+/*************************************************************************
+	> File Name: setsid.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月28日 星期日 17时42分11秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<sys/types.h>
+#include<unistd.h>
+
+int main(){
+    pid_t pid;
+    pid = fork();
+    if(pid < 0){
+        perror("fork error");
+        exit(1);
+    }
+    else if(pid > 0){
+        printf("parent process  ID = %d\n",getpid());
+        printf("parent group ID = %d\n",getpgid(0));
+        printf("parent session ID = %d\n" ,getsid(0));
+    }
+    else if(pid == 0){
+        printf("child process ID = %d\n",getpid());
+      //  printf("child's parent process ID =%d\n",getppid());
+        printf("child's group ID = %d\n",getpgid(0));
+        printf("child session ID = %d\n",getsid(0)) ;
+    sleep(5);
+        setsid();
+
+    printf("--------\n\n");
+
+    printf("child group process  ID = %d\n",getpgid(0));
+    printf("child's process ID = %d\n",getpid());
+    printf("child session ID = %d\n",getsid(0));
+}
+return 0;
+}        
+```
+
+
+
+### 守护进程
+
+也叫Daemon（精灵）进程，是linux的后台服务进程（没有控制终端，不能直接和用户交互，不受用户登录，注销的影响），独立于控制终端并且周期性执行某种任务或者等待某些时间的发生，一般采用d结尾的名字。
+
+**创建守护进程，最关键的异步就是调用setsid函数创建一个新的session（会话），并且成为会长。**
+
+**创建守护进程模型**
+
+1. 创建子进程，父进程退出
+2. 在子进程中创建新的对话（同理setsid的创建过程）
+
+3. 改变当前目录为根目录（也可以变成其他目录，目的就是为了防止占用可卸载的文件系统）
+
+4. 重设文件权限掩码 （umask（）函数），防止继承的文件创建屏蔽字拒绝某些权限。增加守护进程的灵活性
+
+5. 关闭文件描述符 （将0 ，1， 2 重定向 /dev/null）
+
+   继承的打开文件不会用到，浪费系统资源，无法卸载
+
+6. 开始执行守护进程核心工作
+
+7. 退出
+
+基本架构：
+
+```c
+/*************************************************************************
+	> File Name: fly.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月28日 星期日 20时37分28秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<unistd.h>
+#include<stdlib.h>
+#include<sys/types.h>
+#include<sys/stat.h>
+#include<fcntl.h>
+
+int main(){
+   pid_t pid;
+    pid = fork();
+    if(pid < 0 ){
+        perror("fork error");
+        exit(1);
+    }
+    else if(pid > 0 ){
+        exit(0);
+    }
+    else {
+        setsid();
+        int ret = chdir("/huangiqngxiang/home/itcast/");
+        if(ret == -1){
+            perror("chdir error");
+            exit(1);
+        }
+        umask(0022); 
+        // chmod 是文件权限码，0644 。而umask是文件权限码的补码
+        close(STDIN_FILENO);
+        open("/dev/null",O_RDWR);
+        dup2( 0 ,STDOUT_FILENO ); // 把后面的重定向前面的
+        dup2( 0 ,STDERR_FILENO );
+    }
+     while(1);
+    return 0;
+}
+```
+
+
+
+练习：
+
+每隔一定的时间，把当前的时间打印，写到文件当中。
+
+在上面的模板的基础上，加上setitimer函数控制时间
