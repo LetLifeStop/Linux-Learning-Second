@@ -95,7 +95,7 @@ int pthread_create(pthread_t *thread , const pthread_attr_t *attr ,void *(*start
 
 attr : 线程属性
 
-start_routine：指向线程的主控函数
+start_routine：指向线程的主控函数，子线程创建成功，该函数自动调用
 
 arg：参数 
 
@@ -182,3 +182,682 @@ int main(){
 }
 ```
 
+### 线程与共享
+
+线程之间共享全局变量
+
+练习：编写程序，验证线程之间共享全局变量
+
+**ps：**
+
+为什么要在for循环的下面sleep一秒？ 因为主线程的for循环是比子线程的创建快的多，如果不sleep1s的话，子线程还没来得及创建，flag就被更改了！！！。
+
+```c
+/*************************************************************************
+	> File Name: judgethread.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 09时25分33秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<unistd.h>
+#include<stdlib.h>
+#include<pthread.h>
+int flag ;
+void *cal(void *tmp){
+   int i = (int)tmp;
+  //  sleep(i);
+    printf(" %d th ,thread ID = %ld , flag = %d\n", i ,pthread_self() , flag);
+    return NULL ;
+}
+int main(){
+     int i;
+    pthread_t pthread;
+    for ( i = 0 ; i < 5; i++ ){
+      sleep(1);
+     flag = i ;
+        int ret;
+    ret  = pthread_create( &pthread , NULL , cal , (void *)i);
+
+        if( ret < 0 ){
+            perror("creat thread error");
+            exit(1);
+        }
+    }
+    sleep(10);
+    return 0;
+}
+```
+
+**exit 是将进程退出， return是返回到调用者的地方，编写多线程的时候，谨慎使用return和exit**
+
+return是将整个进程退出，ex
+
+#### pthread_exit 函数
+
+将单个线程退出
+
+void pthread_exit( void *retval);
+
+无返回值
+
+#### pthread_join 函数
+
+阻塞等待线程的退出，获取线程退出状态，对应进程的waitpid函数，一次只能回收一个
+
+int pthread_join(pthread_t thread , void **retval)
+
+参数：
+
+thread ，线程ID
+
+retval ，存储线程结束状态
+
+```c
+/*************************************************************************
+	> File Name: pthread_creat.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 15时30分47秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<pthread.h>
+
+
+void *thrd_fuc(void *arg){
+    pthread_exit((void *)100);
+    // 也可以返回结构体
+}
+int main(){
+  pthread_t tid;
+    int ret ;
+    int *retval ;
+    printf("In main 1: thread id = %lu ,pid = %u\n",pthread_self(),getpid());
+    ret = pthread_create( &tid ,NULL , thrd_fuc ,NULL );
+    if( ret != 0 ){
+       perror("thread fail");
+        exit(1);
+    }
+    pthread_join( tid ,(void **)&retval );
+    printf("-----%d\n",(int)retval);
+    pthread_exit((void *)1);
+}
+```
+
+结构体
+
+```c
+/*************************************************************************
+	> File Name: pthread_creat.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 15时30分47秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<pthread.h>
+#include<string.h>
+
+typedef struct {
+    int num;
+    char ch;
+    char str[100];
+}exit_t;
+
+void *thrd_fuc(void *arg){
+    exit_t *ret = (exit_t *)malloc(sizeof(exit_t));
+    ret->ch = 'm';
+    ret->num = 200;
+    strcpy(ret->str , "1111dwadaw\n");
+    pthread_exit((void *)ret);
+}
+int main(){
+  pthread_t tid;
+    int ret ;
+    exit_t *retval ;
+    printf("In main 1: thread id = %lu ,pid = %u\n",pthread_self(),getpid());
+    ret = pthread_create( &tid ,NULL , thrd_fuc ,NULL );
+    if( ret != 0 ){
+       perror("thread fail");
+        exit(1);
+    }
+    pthread_join( tid ,(void **)&retval );
+    printf(" ch = %c ,num = %d , str = %s \n",retval->ch ,retval->num ,retval->str);
+    free(retval); // 回收
+    pthread_exit((void *)1);
+}
+```
+
+回收多个子进程
+
+```c
+/*************************************************************************
+	> File Name: backthread.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 15时56分15秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<pthread.h>
+
+int var = 100;
+void *func( void *arg ){
+int i = (int)arg;
+  sleep(i);
+    if(i == 1){
+        var = 333;
+        printf(" car = %d\n",var);
+        return var;
+    }
+    else if(i == 3){
+        var = 777;
+        printf("I an %d th pthread ,pthread ID  =%d , var = %d\n" , i ,pthread_self() ,var );
+        pthread_exit((void *)var);
+    }
+    else {
+       printf("I am %dth pthread ,pthread ID = %d , var = %d\n",i , pthread_self(), var); 
+    }
+    return NULL;
+}
+int main(){
+    pthread_t tid[5];
+    int i;
+    int *ret[5];
+    int retval;
+    for( i = 0 ; i < 5;i++ ){
+    retval = pthread_create(&tid[i] , NULL ,func ,(void *)i );
+        if(retval < 0){
+           perror("creat error");
+            exit(1);
+        }
+    }
+    for( i = 0 ; i< 5;i++ ){
+        pthread_join(tid[i] , (void **)&ret[i]);
+        printf("---%d th , ret = %d\n",i, (int)ret[i]);
+    }
+    printf("I am main pthread tid = %lu \n",pthread_self());
+    sleep(i);
+    return 0;
+}
+```
+
+**进程之间，由父进程回收子进程；但是线程之间，是互相并行的，线程之间可以互相回收。**
+
+
+
+### pthread_detach函数
+
+实现线程分离
+
+int pthread_detach( pthread_t thread); 成功，0；失败，错误号
+
+从状态上，线程与主控线程断开关系。线程结束后，其退出状态不由其他线程获取，而是自己自动释放。
+
+进程如果有该机制，将不会产生僵尸进程。
+
+```c
+/*************************************************************************
+	> File Name: pthread_detach.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 16时42分26秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<string.h>
+#include<pthread.h>
+#include<unistd.h>
+
+void *cal(void *arg){
+    int n = 3;
+    while(n--){
+printf("thread count %d\n",n);
+        sleep(1);
+    }
+    return (void *)2;
+}
+int main(){
+    pthread_t tid;
+    void *tret;
+    int err;
+    pthread_create( &tid ,NULL , cal , NULL );
+    
+    pthread_detach(tid);
+
+    while(1){
+        err = pthread_join(tid ,&tret);
+        printf("-----------err = %d\n",err);
+        if(err != 0){
+            fprintf(stderr , "thread %s\n",strerror(err));
+        }
+        else fprintf(stderr , "thread exit code%d\n", (int)tret);
+        sleep(1);
+    }
+    return 0;
+}
+```
+
+如果我们把pthread_detach回收的话，就会发现先thread_count输出完再往下走。
+
+这是因为：**pthread_join 和wait类似，是阻塞等待子线程结束**
+
+
+
+
+
+### 杀死线程
+
+int pthread_cancel(pthread_t thread) ;
+
+**注意：线程的取消并不是实时的， 而是由一定的延时，需要等到线程到达某个取消点。**
+
+取消点：
+
+1. 执行creat ， open， pause，close等等（man 7 pthreads）
+
+2. 执行系统调用
+3. 当没有系统调用的时候，添加pthread_testcancel() ；自己添加取消点
+
+```c
+/*************************************************************************
+	> File Name: thread_cancel.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 17时47分55秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<pthread.h>
+
+void *cal(void *t){
+    int i = (int)t;
+    while(1)
+    { 
+printf("dawdad\n");
+        sleep(1);
+        pthread_testcancel(); // 如果把while里面的，全部删除，就会卡死，无法删掉
+    }
+   return (void *)666;
+}
+int main(){
+    pthread_t pthread;
+    int ret ,ret1 ,ret2;
+    ret = pthread_create( &pthread , NULL , cal , NULL );
+    if(ret != 0){
+        perror("creat error");
+        exit(1);
+    }
+
+    sleep(3);
+     ret1 = pthread_cancel(pthread);
+    ret2 = pthread_join(pthread ,(void **)&ret); // 回收一个杀死的进程，会返回 -1 
+    printf("%d\n",(int)ret);  // printf("%d\n" , ret);
+    sleep(2);
+    return 0;
+}
+```
+
+#### pthread_equal函数
+
+比较两个线程ID是否相等
+
+#### 控制原语的对比
+
+fork                    pthread_creat
+
+eixt(int)              pthread_exit(void *)
+
+wait(int *)          pthread_join(,void **)  // 注意对比
+
+kill                       pthread_cancel()
+
+getpid                pthread_self()
+
+​                            pthread_detach()
+
+#### 线程属性
+
+ linux下的线程属性是可以根据实际项目需要，进行设置。如果我们要求对程序更高的要求，我们可以通过设置线程栈的大小来降低内存的使用，增加最大线程的个数
+
+typedef struct{
+
+int etachstate;
+
+
+
+}pthread_attr_t;
+
+**重点：**
+
+1. 线程分离状态
+2. 线程栈大小（默认平均分配）（**默认进程的栈是8102KB == 8M）
+3. 线程栈警戒缓冲区大小（位于栈末尾）
+
+##### 线程属性初始化
+
+ 注意：应该先初始化线程属性，再pthread_create 创建线程
+
+**初始化线程属性**
+
+Int pthread_attr_init( pthread_attr_t *attr);
+
+**销毁线程属性所占用的资源**
+
+int pthread_attr_destory(pthread_attr_t *attr);
+
+**线程的分离状态**
+
+非分离状态 && 分离状态
+
+非分离状态：等待主线程的结束，当调用pthread_join() 函数返回的时候，创建的线程才算结束，才能释放自己所占的系统资源
+
+分离状态：自己运行结束了，线程也就终止，马上释放资源
+
+**函数：**
+
+设置线程属性  分离 && 非分离
+
+Int pthread_attr_setdetachstate( pthread_attr_t *attr , int detachstate );
+
+获取线程属性 分离 && 非分离
+
+int pthread_attr_getdetachstate(pthread_attr_t *attr ,int *detachstate);
+
+   参数：
+
+attr：
+
+已经初始化的线程属性
+
+分离：
+
+PTHERATE_CREATE_DETACHED
+
+非分离：
+
+PTHERATE_CREATE_JOINABLE
+
+```c
+/*************************************************************************
+	> File Name: thread_init.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 20时21分17秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<pthread.h>
+#include<string.h>
+
+void *cal(void *t){
+    pthread_exit((void *)77);
+}
+int main(){
+pthread_t tid;
+int ret ;
+    pthread_attr_t attr;
+    ret = pthread_attr_init(&attr);
+    if(ret != 0 ){
+    fprintf(stderr , "pthread_init error:%s\n",strerror(ret));
+        exit(1);
+    }
+    pthread_attr_setdetachstate( &attr,PTHREAD_CREATE_DETACHED );
+    ret = pthread_create( &tid ,&attr ,cal , NULL );
+    if(ret != 0){
+        fprintf(stderr ,"pthread_create error:%s\n",strerror(ret));
+        exit(1);
+    }
+    ret = pthread_join(tid , NULL);
+   // if(ret != 0){
+   // perror("join error");
+   //     exit(1);
+   // }
+    printf("--------------%d\n",ret);
+    pthread_exit((void*)1);
+}
+```
+
+
+
+注意：
+
+如果设置一个线程为分离线程，有可能在create返回之前就终止了，终止以后就有可能将线程号和系统资源移交给其他的线程使用，这样调用pthread_create就有可能得到错误的信号。
+
+解决方法：
+
+在被创建的线程中调用pthread_cond_timewait函数，让这个线程等一会，留出足够的时间让pthread_create返回
+
+
+
+#### 线程的栈地址
+
+##### 设置线程的栈的地址
+
+pthread_attr_setstack(pthread_attr_t *attr , void *stackaddr , size_t stacksize);
+
+**获取线程的栈的地址**
+
+pthread_attr_getstack(pthread_attr_t *attr , void *stackaddr , size_t stacksize);
+
+
+
+#### 线程的栈大小
+
+**设置现成的栈的大小**
+
+pthread_attr_setstacksize(pthread_attr_t *attr  , size_t stacksize);
+
+**获取线程的栈的大小**
+
+pthread_attr_getstack(pthread_attr_t *attr , size_t *tacksize);
+
+
+
+练习：
+
+查看当前计算机中的一个进程最多能创建多少个线程
+
+```c
+/*************************************************************************
+	> File Name: cont.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 20时53分28秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<pthread.h>
+
+void *cal(void *t){
+    while(1){sleep(1);} // 防止线程结束，释放栈空间
+}
+int main(){
+    pthread_t ptd;
+    int ret;
+    int cnt  = 0;
+    while(1){
+     ret = pthread_create(&ptd ,NULL , cal , NULL);
+        if(ret != 0){
+            break;
+        }
+        printf("-----------%d\n", ++cnt);
+    }
+    return 0;
+}
+```
+
+调整线程栈空间的大小：
+
+```c
+/*************************************************************************
+	> File Name: cont.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年07月30日 星期二 20时53分28秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<pthread.h>
+#include<string.h>
+
+const int SIZE = 0x10000;
+
+void *cal(void *args){ 
+    while(1){sleep(1);}
+   // pthread_exit((void *)1);
+}
+int main(void){
+    pthread_attr_t  attr;
+    pthread_t ptd; 
+    int ret ,detach ,cnt= 0 ;
+    size_t stacksize ;
+    void *stackaddr ;
+    ret = pthread_attr_init(&attr);
+    if(ret != 0){
+        perror("init error");
+        exit(1);
+    }
+    pthread_attr_getstack(&attr ,&stackaddr, &stacksize);
+     ret = pthread_attr_getdetachstate( &attr ,&detach );
+    if(ret != 0){
+        perror("get detachstate error");
+        exit(1);
+    }
+    if(detach ==PTHREAD_CREATE_DETACHED){
+        puts("thread detached");
+    }
+    if(detach == PTHREAD_CREATE_JOINABLE){
+        puts("thread joined");
+    } 
+     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+  // size_t stacksize;
+    while(1){
+        stackaddr = malloc(SIZE);
+        if(stackaddr == NULL){
+            perror("malloc error");
+            exit(1);
+        }
+      //  stacksize = SIZE;
+        pthread_attr_setstack( &attr ,stackaddr ,SIZE);
+        int rret = pthread_create(&ptd , &attr ,cal , NULL);
+        if(rret != 0){
+        printf("cnt = %d\n",cnt);
+            printf("````%s\n",strerror(rret));
+        exit(1);
+        }
+        cnt++;
+    }
+   pthread_attr_destroy(&attr);
+return 0;
+}
+```
+
+```c
+#include <stdio.h>
+#include <pthread.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+ 
+#define SIZE 0x10000
+ 
+void *th_fun(void *arg)
+{
+	while (1) 
+		sleep(1);
+}
+ 
+int main(void)
+{
+	pthread_t tid;
+	int err, detachstate, i = 1;
+	pthread_attr_t attr;
+	size_t stacksize;   //typedef  size_t  unsigned int 
+	void *stackaddr;
+ 
+	pthread_attr_init(&attr);		
+	pthread_attr_getstack(&attr, &stackaddr, &stacksize);
+	pthread_attr_getdetachstate(&attr, &detachstate);
+ 
+	if (detachstate == PTHREAD_CREATE_DETACHED)   //默认是分离态
+		printf("thread detached\n");
+	else if (detachstate == PTHREAD_CREATE_JOINABLE) //默认时非分离
+		printf("thread join\n");
+	else
+		printf("thread un known\n");
+ 
+	/* 设置线程分离属性 */
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+ 
+	while (1) {
+		/* 在堆上申请内存,指定线程栈的起始地址和大小 */
+		stackaddr = malloc(SIZE);
+		if (stackaddr == NULL) {
+			perror("malloc");
+			exit(1);
+		}
+		stacksize = SIZE;
+	 	pthread_attr_setstack(&attr, stackaddr, stacksize);   //借助线程的属性,修改线程栈空间大小
+ 
+		err = pthread_create(&tid, &attr, th_fun, NULL);
+		if (err != 0) {
+			printf("%s\n", strerror(err));
+			exit(1);
+		}
+		printf("%d\n", i++);
+	}
+ 
+	pthread_attr_destroy(&attr);
+ 
+	return 0;
+}
+
+```
+
+
+
+### NPTL
+
+1. 查看线程库版本：
+
+2. NOTL实现机制（POSIX）
+3. 使用线程库时， gcc指定 -lpthread
+
+
+
+### 线程使用注意事项
+
+1. 主线程退出，其他线程不退出，主线程应该调用pthread_exit
+
+2. 避免僵尸进程 1. pthread_join 2. pthread_detach 3. pthread_detach 指定分离属性
+
+3. malloc和mmap申请的内存可被其他线程释放
+
+4. 避免在多线程模型中调动fork ，如果调用，马上exec。子进程中只有调用fork的线程存在，
+
+   其他线程都没有了。
+
+5. 避免在多线程中引入信号机制
+
+
+
+##### 多线程拷贝作业
+
+ 
