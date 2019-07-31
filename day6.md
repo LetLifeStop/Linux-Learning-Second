@@ -860,4 +860,126 @@ int main(void)
 
 ##### 多线程拷贝作业
 
- 
+ ```c
+#include<stdio.h>
+#include<sys/stat.h>
+#include<fcntl.h>
+#include<unistd.h>
+#include<sys/types.h>
+#include<sys/wait.h>
+#include<stdlib.h>
+#include<sys/mman.h>
+#include<string.h>
+#include<pthread.h>
+
+void sys_err(char *str){
+    perror(str);
+    exit(-1);
+}
+int min(int t1 ,int t2  )  {
+    if(t1 > t2)return t2;
+    return t1;
+}
+int sto[10];
+void  init(int num , int len){ // 分配任务
+    int tmp  = len / 5 ;
+    while(len > 0 ){
+        int t = min(tmp , len);
+        sto[ num++ ] = t;
+        len -= t;
+        if(len<tmp && len != 0 ){
+            sto[ num - 1] += len;
+            return ;
+        }
+    }
+}
+struct sto_wr{
+   char *r;
+   char *w;
+    int id;
+};
+
+int len;
+void *cal(void *arg){
+    struct sto_wr* tmp =(struct sto_wr*) arg;
+    printf("%d\n",len);
+        memcpy( tmp->w + (tmp->id) * ( len / 5 ), tmp->r + (tmp->id) * ( len / 5 ),sto[tmp->id]);
+        //	 printf("%d %d \n",i * 12 , sto[i]);
+        printf("%d th sto , from %d to %d byte, %d stored\n", tmp->id, tmp->id * (len/5) ,tmp->id * (len/5) + sto[ tmp->id ] , sto[ tmp->id ] );
+    return NULL;
+}
+int main(int argc ,char *argv[]){
+    int fd ;
+    struct sto_wr sto[6];
+
+    if(argc < 3) {
+       perror("error");
+         exit(1);
+      }
+    struct stat info;     
+    // 建立读取文件的映射区
+    fd = open (argv[1],O_CREAT|O_RDWR,0777) ; 
+    if( fd < 0){
+        perror("open file");
+        exit(1);
+    }
+    int tmp ;
+    fstat(fd , &info);
+    len = info.st_size;
+     printf("%d\n" , len);  
+    char *p_r = NULL;
+    p_r =(char *)mmap(NULL , len , PROT_READ|PROT_WRITE, MAP_SHARED ,fd ,0);  // 建立映射
+    if( p_r == MAP_FAILED){
+        perror("mmap1 error");
+        exit(1);
+    }
+   char *r = p_r;
+    close(fd);
+    printf("%d\n",len);
+    int fd1;
+    // 建立编写文件的映射区
+    char *p_w = NULL ;
+    fd1 = open (argv[2] , O_RDWR|O_CREAT|O_TRUNC, 0644);
+
+    if(fd1 < 0 ){
+        perror("open 2 error");
+        exit(1);
+    } 
+     tmp  = ftruncate(fd1 ,len );
+    if(tmp == -1){
+        perror("  ftruncate error");
+        exit(1);
+    }
+    p_w =(char *)mmap(NULL , len , PROT_WRITE|PROT_READ, MAP_SHARED , fd1 ,0);
+    if(p_w == MAP_FAILED){
+        perror("mmap 2 error");
+        exit(1);
+    }
+   char  *w =p_w;
+    close(fd1);
+    init(0 , len);
+    //for(int i = 0 ; i< 5;i++){
+     //   printf("  %d %d\n",i,sto[i]);
+   // }
+    int i;
+    int pid ; 
+    int cnt = 0;
+    pthread_t ptd[5];
+ //   pthread_t *ptd = (pthread_t*)malloc(sizeof(pthread_t)*5);
+    for (i = 0 ; i< 5; i++) {
+      //  sleep(i);
+      sto[i].r = r ;
+      sto[i].w = w ;
+      sto[i].id =i;  // 储存起来使用，直接点用函数即可。
+        pid = pthread_create( &ptd[i] , NULL ,cal , (void *)&sto[i]);
+      //  printf("%d th , pid == %d\n",i, pid);
+        if(pid != 0){
+            perror("pthread error");
+            exit(1);
+        }
+    }
+    sleep(10);
+    return 0;
+}
+ ```
+
