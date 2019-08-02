@@ -168,6 +168,53 @@ pthread_t tid;
 1. 线程尝试对同一个互斥量锁两次
 2. 线程1拥有A锁，请求获得B锁；线程2拥有B锁，请求获得A锁
 
+死锁示例：
+
+```c
+/*************************************************************************
+	> File Name: test.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年08月02日 星期五 16时45分56秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<pthread.h>
+#include<stdlib.h>
+#include<unistd.h>
+
+pthread_mutex_t sig1 = PTHREAD_MUTEX_INITIALIZER ;
+pthread_mutex_t sig2 = PTHREAD_MUTEX_INITIALIZER ;
+
+void *cal1(void *arg){
+    pthread_mutex_lock(&sig1);
+    sleep(1);
+    pthread_mutex_lock(&sig2);
+    printf("1111111\n");
+    return NULL;
+}
+
+void *cal2(void *arg){
+    pthread_mutex_lock(&sig2);
+    sleep(1);
+    pthread_mutex_lock(&sig1);
+    printf("222222\n");
+    return NULL;
+}
+
+
+int main(){
+ pthread_t ptd1, ptd2;
+    ptd1 = pthread_create( &ptd1 , NULL , cal1 , NULL);
+    ptd2 = pthread_create( &ptd2 , NULL , cal2 , NULL);
+    pthread_join(ptd1 ,NULL);
+    pthread_join(ptd2 ,NULL);
+    return 0;
+}
+```
+
+
+
 避免方法：
 
    **避免死锁的方法：**
