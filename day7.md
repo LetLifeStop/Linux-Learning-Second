@@ -54,7 +54,7 @@ int pthread_mutex_init( pthread_mutex_t *restrict mutex , const pthread_mutexatt
 
 **pthread_mutex_lock 函数**
 
-加锁，可理解为将mutex - 1 。
+加锁，可理解为将mutex  --
 
 **pthread_mutex_unlock函数**
 
@@ -131,7 +131,7 @@ void *cal(void *arg){
         printf("hello ");
         sleep(rand()%3);
         printf("world\n");
-        pthread_mutex_lock(&mutex);
+        pthread_mutex_unlock(&mutex);
         sleep(rand()%3);
 
    }
@@ -163,14 +163,17 @@ pthread_t tid;
 
 ### 死锁
 
+产生条件：
+
 1. 线程尝试对同一个互斥量锁两次
 2. 线程1拥有A锁，请求获得B锁；线程2拥有B锁，请求获得A锁
 
-
+避免方法：
 
    **避免死锁的方法：**
 
-   当拿不到所有的锁的时候，放弃自己拥有的锁
+1. 当拿不到所有的锁的时候，放弃自己拥有的锁
+2. 保证资源的获取顺序，要求每个线程获取资源的顺序一致
 
 #### 读写锁：
 
@@ -188,7 +191,7 @@ pthread_t tid;
 
 1. 在写的状态下，写是独占；如果是读的状态下，别的线程读的话，是允许的。
 
-2. 写锁优先级高，如果说有读锁和写锁同时抢夺的话，写锁优先级高。
+2. 写锁优先级高，如果说有读和写同时抢夺锁的话，写锁优先级高。
 
 练习：
 
@@ -279,7 +282,7 @@ int main(){
 }
 ```
 
-得到的结论：读是可以共享的，但是写不可以。写锁优先级高
+得到的结论：读是可以共享的，但是写不可以。写锁优先级更高。
 
 ### 条件变量
 
@@ -389,7 +392,6 @@ void *cal_customer(void *arg){
         while(head == NULL){
         pthread_cond_wait(&has_product ,&lock);   
         }
-
         mp = head;
         head = mp->next;
         pthread_mutex_unlock(&lock);
@@ -486,5 +488,281 @@ sem_post
 
 生产者，消费者模型（队列实现）
 
+```c
+/*************************************************************************
+	> File Name: sem.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年08月02日 星期五 08时41分22秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<pthread.h>
+#include<unistd.h>
+#include<semaphore.h>
+
+int Queue[6];
+sem_t prd;
+sem_t blank;
+
+void *cal_product(void *arg){
+    int i = 0 ;
+    while(1){
+        sem_wait(&blank);
+        Queue[i] = rand()%5 + 1;
+        printf("*****product %d****\n", Queue[i]);
+        sem_post(&prd);
+
+        i = (i + 1)%5;
+        sleep(rand()%3);
+    }
+    return NULL;
+}
+void *cal_constrmer(void *arg){
+   int  i = 0;
+    while(1){
+        sem_wait(&prd);
+        printf("~~~~~constrmer %d*****\n",Queue[i]);
+        Queue[i] = 0;
+        sem_post(&blank);
+
+        i = (i + 1)%5;
+        sleep(rand()%3);
+    }
+    return NULL;
+}
+int main(){
+
+    int ret1 , ret2;
+    ret1 = sem_init(&prd , 0 , 0);
+    if(ret1 != 0){
+        perror("sem prd  init error");
+        exit(1);
+    }
+    ret2 = sem_init(&blank , 0 , 5);
+    if(ret2 != 0){
+        perror("sem blank init error");
+        exit(1);
+    }
+     
+    int prd_ret , con_ret;
+    pthread_t product ,constrmer;
+    
+    prd_ret = pthread_create( &product , NULL , cal_product , NULL);
+    if(prd_ret != 0){
+        perror("pthread create product error");
+        exit(1);
+    }
+
+    con_ret = pthread_create( &constrmer , NULL ,cal_constrmer , NULL);
+    if(con_ret != 0){
+        perror("pthread create constrmer error");
+        exit(1);
+    }
+
+    int ret3 ,ret4;
+    pthread_join( product ,NULL );
+    pthread_join( constrmer , NULL );
+
+    ret3 = sem_destroy( &prd );
+    if(ret3 != 0){
+        perror("sem prd destroy error");
+        exit(1);
+    }
+    ret4 = sem_destroy( &blank );
+    if(ret4 != 0){
+        perror("sem con destroy error");
+        exit(1);
+    }
+    return 0;
+}
+```
 
 
+
+作业：
+
+结合生产者消费者信号量模型，揣摩sem_timedwait 函数 ，编程实现，一个线程读用户输入，一个线程打印“ hello world” 。如果用户无输入， 则每隔5秒向屏幕打印一个“hello world” ； 如果用户有输入，立刻打印 “hello world”到屏幕。
+
+
+
+
+
+### 进程间同步
+
+
+
+#### 互斥量 mutex
+
+进程之间也可以使用互斥锁来达到相同的目的。但是应该在pthread_mutex_init初始化之前，修改其属性为进程间共享。
+
+int pthread_mutex_init( pthread_mute_t *restrict *mutex, const pthread_mutexattr_t *restrict attr);
+
+
+
+**主要应用函数：**
+
+pthread_mutexattr_t mattr 类型  // 用于定义mutex锁的属性
+
+pthread_mutexattrr_init  //初始化一个mutex属性对象
+
+pthread_mutexattr_destroy //销毁mutex属性对象
+
+pthread_mutexattr_setpshared // 修改mutex属性
+
+int pthread_mutexattr_setpshared(pthread_mutexattr_t *attr , int pshared);
+
+参数2：
+
+pshared取值
+
+线程锁： PTHREAD_PROCESS_PRIVATE(mutex的默认属性为线程锁，进程间私有)
+
+进程锁：PTHREAD_PROCESS_SHARED 
+
+```c
+/*************************************************************************
+	> File Name: process_mutex.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年08月02日 星期五 11时00分03秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<unistd.h>
+#include<pthread.h>
+#include<string.h>
+#include<sys/mman.h>
+#include<sys/wait.h>
+
+struct mt{
+    int num;
+    pthread_mutex_t mutex;
+    pthread_mutexattr_t mutexattr;
+};
+
+int main(void){
+    int i;
+    struct mt *mm;
+    pid_t pid;
+
+    mm = mmap(NULL ,sizeof(*mm) , PROT_READ|PROT_WRITE ,MAP_SHARED|MAP_ANON, -1 , 0);
+  //  memset(mm ,0 , sizeof(*mm));
+    pthread_mutexattr_init(&mm->mutexattr);
+    pthread_mutexattr_setpshared(&mm->mutexattr,PTHREAD_PROCESS_SHARED);
+    pthread_mutex_init(&mm->mutex ,&mm->mutexattr);
+   
+    pid = fork();
+    if(pid == 0){
+        for(i = 0; i < 10; i++ ){
+            pthread_mutex_lock(&mm->mutex);
+            (mm->num)++;
+            printf("-child------- num++ = %d\n",mm->num);
+            pthread_mutex_unlock(&mm->mutex);
+        }
+    }
+    else if(pid > 0){
+        for( i =0; i < 5 ;i++){
+            pthread_mutex_lock(&mm->mutex);
+            mm->num += 2;
+            printf("-parent ----  num+2 = %d\n",mm->num);
+            pthread_mutex_unlock(&mm->mutex);
+        }
+        wait(NULL);
+    }
+    return 0;
+
+}
+```
+
+
+
+#### · 文件锁
+
+int  fcntl(int fd ,int cmd , .../*arg */);
+
+参数2：
+
+F_SETLK(struct flock *)设置文件锁 ,     **非堵塞**
+
+F_SETLKW(struct flock *)设置文件锁 ，**堵塞**
+
+F_GETLK(struct flock *)获取文件锁
+
+c参数3：
+
+strucy flock{
+
+short l_type;  // 锁的类型： F_RDLCK ,F_WRLCK ,F_UNLCK
+
+short l_whence ; 偏移位置：SEEK_SET（开始位置）,SEEK_CUR ,SEEK_END
+
+off_t l_start; 起始偏移
+
+off_t l_len; 长度 ：0表示整个文件加锁
+
+pid_t l_pid;   持有该锁的进程ID
+
+}
+
+示例：
+
+**仍然遵循读时共享，写时独占**
+
+```c
+/*************************************************************************
+	> File Name: file_lock.c
+	> Author: 
+	> Mail: 
+	> Created Time: 2019年08月02日 星期五 15时07分10秒
+ ************************************************************************/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<pthread.h>
+#include<unistd.h>
+#include<sys/types.h>
+#include<sys/stat.h>
+#include<fcntl.h>
+
+int main(int argc ,char *argv[]){
+    int fd;
+    struct flock f_lock;
+    if(argc < 2){
+        perror("file lose");
+        exit(1);
+    }
+    fd = open(argv[1],O_RDWR);
+    if(fd < 0){
+    perror("open error");
+        exit(1);
+    }
+    f_lock.l_type = F_WRLCK;
+    f_lock.l_whence = SEEK_SET;
+    f_lock.l_start  = 0;
+    f_lock.l_len = 0;
+    fcntl(fd ,F_SETLKW , &f_lock);
+    printf("Lock \n");
+    sleep(5);
+    f_lock.l_type = F_UNLCK;
+    fcntl(fd ,F_SETLKW , &f_lock);
+    printf("unlock \n");
+    return 0;
+}
+
+```
+
+
+
+思考:
+
+多线程当中，可以使用文件锁吗？
+
+不可以。多线程共享文件描述符。而给文件上锁，是通过修改文件描述符所指向的文件结构体当中的变量来实现的。所以，多线程无法使用文件锁。
+
+
+
+**哲学家用餐模型分析**
+
+死锁
